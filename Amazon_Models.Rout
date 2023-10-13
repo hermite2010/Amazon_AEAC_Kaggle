@@ -32,7 +32,98 @@ Type 'q()' to quit R.
 ✖ dplyr::filter()  masks stats::filter()
 ✖ dplyr::lag()     masks stats::lag()
 ✖ recipes::step()  masks stats::step()
-• Learn how to get started at https://www.tidymodels.org/start/
+• Dig deeper into tidy modeling with R at https://www.tmwr.org
 > library(embed) # For target encoding
-Error in library(embed) : there is no package called ‘embed’
+> library(vroom) 
+
+Attaching package: ‘vroom’
+
+The following object is masked from ‘package:yardstick’:
+
+    spec
+
+The following object is masked from ‘package:scales’:
+
+    col_factor
+
+> library(parallel)
+> library(ggmosaic) # For plotting
+> 
+> # Reading in the Data
+> AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
+Rows: 32769 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): ACTION, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTN...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> AEAC_Test <- vroom("test.csv") #"Amazon_AEAC_Kaggle/test.csv" for local
+Rows: 58921 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> 
+> AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
+> 
+> AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
++   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
++   step_other(all_nominal_predictors(), threshold = .001) %>% 
++ #  step_dummy(all_nominal_predictors()) %>% 
++   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
+> # Try step_lencode_bayes() in the future
+> 
+> prep <- prep(AEAC_recipe)
+> baked_data <- bake(prep, new_data=AEAC_Train)
+> 
+> 
+> # Logistic Regression -----------------------------------------------------
+> 
+> log_reg_mod <- logistic_reg() %>% #Type of model
++   set_engine("glm")
+> 
+> amazon_log_workflow <- workflow() %>%
++ add_recipe(AEAC_recipe) %>%
++ add_model(log_reg_mod) %>%
++ fit(data = AEAC_Train) # Fit the workflow
+> 
+> amazon_log_predictions <- predict(amazon_log_workflow,
++                               new_data=AEAC_Test,
++                               type= "prob") #%>% # "class" which uses cutoff as .5 or "prob" (see doc)
+>   #mutate(ACTION = ifelse(.pred_1> C,1,0)) #REPLACE C WITH WHATEVER CUTOFF I WANT
+> 
+> ### FOR CLASS
+> log_submission <- amazon_log_predictions %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_class)
+Error in `rename()`:
+! Can't rename columns that don't exist.
+✖ Column `.pred_class` doesn't exist.
+Backtrace:
+     ▆
+  1. ├─amazon_log_predictions %>% mutate(id = row_number()) %>% ...
+  2. ├─dplyr::rename(., Action = .pred_class)
+  3. ├─dplyr:::rename.data.frame(., Action = .pred_class)
+  4. │ └─tidyselect::eval_rename(expr(c(...)), .data)
+  5. │   └─tidyselect:::rename_impl(...)
+  6. │     └─tidyselect:::eval_select_impl(...)
+  7. │       ├─tidyselect:::with_subscript_errors(...)
+  8. │       │ └─rlang::try_fetch(...)
+  9. │       │   └─base::withCallingHandlers(...)
+ 10. │       └─tidyselect:::vars_select_eval(...)
+ 11. │         └─tidyselect:::walk_data_tree(expr, data_mask, context_mask)
+ 12. │           └─tidyselect:::eval_c(expr, data_mask, context_mask)
+ 13. │             └─tidyselect:::reduce_sels(node, data_mask, context_mask, init = init)
+ 14. │               └─tidyselect:::walk_data_tree(new, data_mask, context_mask)
+ 15. │                 └─tidyselect:::as_indices_sel_impl(...)
+ 16. │                   └─tidyselect:::as_indices_impl(...)
+ 17. │                     └─tidyselect:::chr_as_locations(x, vars, call = call, arg = arg)
+ 18. │                       └─vctrs::vec_as_location(...)
+ 19. └─vctrs (local) `<fn>`()
+ 20.   └─vctrs:::stop_subscript_oob(...)
+ 21.     └─vctrs:::stop_subscript(...)
+ 22.       └─rlang::abort(...)
 Execution halted
