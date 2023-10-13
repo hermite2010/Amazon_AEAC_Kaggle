@@ -32,7 +32,7 @@ Type 'q()' to quit R.
 ✖ dplyr::filter()  masks stats::filter()
 ✖ dplyr::lag()     masks stats::lag()
 ✖ recipes::step()  masks stats::step()
-• Dig deeper into tidy modeling with R at https://www.tmwr.org
+• Search for functions across packages at https://www.tidymodels.org/find/
 > library(embed) # For target encoding
 > library(vroom) 
 
@@ -48,6 +48,8 @@ The following object is masked from ‘package:scales’:
 
 > library(parallel)
 > library(ggmosaic) # For plotting
+> 
+> # Logistic Regression -----------------------------------------------------
 > 
 > # Reading in the Data
 > AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
@@ -72,16 +74,12 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
 +   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
 +   step_other(all_nominal_predictors(), threshold = .001) %>% 
-+ #  step_dummy(all_nominal_predictors()) %>% 
-+   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
++   step_dummy(all_nominal_predictors()) #%>% 
+>   #step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
 > # Try step_lencode_bayes() in the future
 > 
 > prep <- prep(AEAC_recipe)
 > baked_data <- bake(prep, new_data=AEAC_Train)
-> 
-> 
-> # Logistic Regression -----------------------------------------------------
-> 
 > log_reg_mod <- logistic_reg() %>% #Type of model
 +   set_engine("glm")
 > 
@@ -89,41 +87,111 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 + add_recipe(AEAC_recipe) %>%
 + add_model(log_reg_mod) %>%
 + fit(data = AEAC_Train) # Fit the workflow
+Warning message:
+glm.fit: fitted probabilities numerically 0 or 1 occurred 
 > 
 > amazon_log_predictions <- predict(amazon_log_workflow,
 +                               new_data=AEAC_Test,
 +                               type= "prob") #%>% # "class" which uses cutoff as .5 or "prob" (see doc)
+Warning message:
+In predict.lm(object, newdata, se.fit, scale = 1, type = if (type ==  :
+  prediction from rank-deficient fit; attr(*, "non-estim") has doubtful cases
 >   #mutate(ACTION = ifelse(.pred_1> C,1,0)) #REPLACE C WITH WHATEVER CUTOFF I WANT
 > 
 > ### FOR CLASS
+> # log_submission <- amazon_log_predictions %>% 
+> #   mutate(id = row_number()) %>% 
+> #   rename(Action = .pred_class)
+> 
+> ### FOR PROB
 > log_submission <- amazon_log_predictions %>% 
 +   mutate(id = row_number()) %>% 
-+   rename(Action = .pred_class)
-Error in `rename()`:
-! Can't rename columns that don't exist.
-✖ Column `.pred_class` doesn't exist.
-Backtrace:
-     ▆
-  1. ├─amazon_log_predictions %>% mutate(id = row_number()) %>% ...
-  2. ├─dplyr::rename(., Action = .pred_class)
-  3. ├─dplyr:::rename.data.frame(., Action = .pred_class)
-  4. │ └─tidyselect::eval_rename(expr(c(...)), .data)
-  5. │   └─tidyselect:::rename_impl(...)
-  6. │     └─tidyselect:::eval_select_impl(...)
-  7. │       ├─tidyselect:::with_subscript_errors(...)
-  8. │       │ └─rlang::try_fetch(...)
-  9. │       │   └─base::withCallingHandlers(...)
- 10. │       └─tidyselect:::vars_select_eval(...)
- 11. │         └─tidyselect:::walk_data_tree(expr, data_mask, context_mask)
- 12. │           └─tidyselect:::eval_c(expr, data_mask, context_mask)
- 13. │             └─tidyselect:::reduce_sels(node, data_mask, context_mask, init = init)
- 14. │               └─tidyselect:::walk_data_tree(new, data_mask, context_mask)
- 15. │                 └─tidyselect:::as_indices_sel_impl(...)
- 16. │                   └─tidyselect:::as_indices_impl(...)
- 17. │                     └─tidyselect:::chr_as_locations(x, vars, call = call, arg = arg)
- 18. │                       └─vctrs::vec_as_location(...)
- 19. └─vctrs (local) `<fn>`()
- 20.   └─vctrs:::stop_subscript_oob(...)
- 21.     └─vctrs:::stop_subscript(...)
- 22.       └─rlang::abort(...)
-Execution halted
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> vroom_write(x=log_submission, file="LogRegression.csv", delim=",") #"Amazon_AEAC_Kaggle/LogRegression.csv"
+> 
+> 
+> # Penalized Logistic Regression -------------------------------------------
+> 
+> # Reading in the Data
+> AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
+Rows: 32769 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): ACTION, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTN...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> AEAC_Test <- vroom("test.csv") #"Amazon_AEAC_Kaggle/test.csv" for local
+Rows: 58921 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> 
+> AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
+> 
+> AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
++   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
++   step_other(all_nominal_predictors(), threshold = .001) %>% 
++   #  step_dummy(all_nominal_predictors()) %>% 
++   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
+> # Try step_lencode_bayes() in the future
+> 
+> prep <- prep(AEAC_recipe)
+> baked_data <- bake(prep, new_data=AEAC_Train)
+> 
+> pen_log_model <- logistic_reg(mixture=tune(),
++                        penalty=tune()) %>% #Type of model
++   set_engine("glmnet")
+> 
+> pen_log_workflow <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(pen_log_model)
+> 
+> ## Grid of values to tune over
+> pen_log_tuning_grid <- grid_regular(penalty(),
++                             mixture(), # Always bewteen 0 and 1
++                             levels = 3) ## L^2 total tuning possibilities
+> 
+> ## Split data for CV
+> folds <- vfold_cv(AEAC_Train, v = 3, repeats=1)
+> 
+> ## Run the CV
+> CV_results <- pen_log_workflow %>%
++   tune_grid(resamples=folds,
++             grid=pen_log_tuning_grid,
++             metrics=metric_set(roc_auc)) 
+→ A | warning: Model failed to converge with max|grad| = 0.174127 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?
+There were issues with some computations   A: x1
+There were issues with some computations   A: x1
+
+> 
+> ## Find Best Tuning Parameters
+> pen_log_bestTune <- CV_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize the Workflow & fit it
+> final_wf <- pen_log_workflow %>%
++   finalize_workflow(pen_log_bestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> ## Predict
+> pen_log_preds <- final_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> vroom_write(x=pen_log_preds, file="PenLogRegression.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
+> 
+> 
+> 
+> 
+> proc.time()
+    user   system  elapsed 
+3491.598   50.107  477.465 
