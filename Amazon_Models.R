@@ -5,8 +5,8 @@ library(parallel)
 library(ggmosaic) # For plotting
 
 # Reading in the Data
-AEAC_Train <- vroom("Amazon_AEAC_Kaggle/train.csv")
-AEAC_Test <- vroom("Amazon_AEAC_Kaggle/test.csv")
+AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
+AEAC_Test <- vroom("test.csv") #"Amazon_AEAC_Kaggle/test.csv" for local
 
 AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
 
@@ -47,7 +47,7 @@ log_submission <- amazon_log_predictions %>%
   rename(Action = .pred_1) %>% 
   select(3,2)
 
-vroom_write(x=log_submission, file="Amazon_AEAC_Kaggle/LogRegression.csv", delim=",")
+vroom_write(x=log_submission, file="LogRegression.csv", delim=",") #"Amazon_AEAC_Kaggle/LogRegression.csv"
 
 
 # Penalized Logistic Regression -------------------------------------------
@@ -91,8 +91,7 @@ pen_log_preds <- final_wf %>%
   rename(Action = .pred_1) %>% 
   select(3,2)
 
-vroom_write(x=pen_log_preds, file="Amazon_AEAC_Kaggle/PenLogRegression.csv", delim=",")
-
+vroom_write(x=pen_log_preds, file="PenLogRegression.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
 
 
 
