@@ -4,6 +4,8 @@ library(vroom)
 library(parallel)
 library(ggmosaic) # For plotting
 
+# Logistic Regression -----------------------------------------------------
+
 # Reading in the Data
 AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
 AEAC_Test <- vroom("test.csv") #"Amazon_AEAC_Kaggle/test.csv" for local
@@ -13,16 +15,12 @@ AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
 AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
   step_other(all_nominal_predictors(), threshold = .001) %>% 
-#  step_dummy(all_nominal_predictors()) %>% 
-  step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
+  step_dummy(all_nominal_predictors()) #%>% 
+  #step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
 # Try step_lencode_bayes() in the future
 
 prep <- prep(AEAC_recipe)
 baked_data <- bake(prep, new_data=AEAC_Train)
-
-
-# Logistic Regression -----------------------------------------------------
-
 log_reg_mod <- logistic_reg() %>% #Type of model
   set_engine("glm")
 
@@ -37,9 +35,9 @@ amazon_log_predictions <- predict(amazon_log_workflow,
   #mutate(ACTION = ifelse(.pred_1> C,1,0)) #REPLACE C WITH WHATEVER CUTOFF I WANT
 
 ### FOR CLASS
-log_submission <- amazon_log_predictions %>% 
-  mutate(id = row_number()) %>% 
-  rename(Action = .pred_class)
+# log_submission <- amazon_log_predictions %>% 
+#   mutate(id = row_number()) %>% 
+#   rename(Action = .pred_class)
 
 ### FOR PROB
 log_submission <- amazon_log_predictions %>% 
@@ -52,6 +50,21 @@ vroom_write(x=log_submission, file="LogRegression.csv", delim=",") #"Amazon_AEAC
 
 # Penalized Logistic Regression -------------------------------------------
 
+# Reading in the Data
+AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
+AEAC_Test <- vroom("test.csv") #"Amazon_AEAC_Kaggle/test.csv" for local
+
+AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
+
+AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
+  step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
+  step_other(all_nominal_predictors(), threshold = .001) %>% 
+  #  step_dummy(all_nominal_predictors()) %>% 
+  step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
+# Try step_lencode_bayes() in the future
+
+prep <- prep(AEAC_recipe)
+baked_data <- bake(prep, new_data=AEAC_Train)
 
 pen_log_model <- logistic_reg(mixture=tune(),
                        penalty=tune()) %>% #Type of model
