@@ -4,6 +4,7 @@ library(vroom)
 library(parallel)
 library(ggmosaic)  # For plotting
 library(ranger)    # FOR RANDOM/CLASSIFICATION FOREST
+library(doParallel)
 
 # Reading in the Data
 AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
@@ -48,6 +49,14 @@ class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)-1))),
 
 class_folds <- vfold_cv(AEAC_Train, v = 5, repeats=1)
 
+## Set up Parallel processing
+
+num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+if (num_cores > 4)
+  num_cores = 10
+cl <- makePSOCKcluster(num_cores)
+registerDoParallel(cl)
+
 ## Run the CV
 
 CV_results <- class_for_wf %>%
@@ -55,6 +64,7 @@ CV_results <- class_for_wf %>%
             grid=class_tuning_grid,
             metrics=metric_set(roc_auc)) #Or leave metrics NULL
 
+stopCluster(cl)
 ## find best tuning parameters
 
 bestTune <- CV_results %>%
