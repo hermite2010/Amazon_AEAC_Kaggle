@@ -26,7 +26,7 @@ baked_data <- bake(prep, new_data=AEAC_Train)
 
 # Set Up the Engine
 
-class_for_mod <- class_forest(mtry = tune(),
+class_for_mod <- rand_forest(mtry = tune(),
                             min_n=tune(),
                             trees=1000) %>% #Type of model
   set_engine("ranger") %>% # What R function to use
@@ -40,7 +40,7 @@ class_for_wf <- workflow() %>%
 
 ## set up grid of tuning values
 
-class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)))),
+class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)-1))),
                                  min_n(),
                                  levels = 10)
 
@@ -50,15 +50,15 @@ class_folds <- vfold_cv(AEAC_Train, v = 5, repeats=1)
 
 ## Run the CV
 
-CV_results <- rand_for_wf %>%
+CV_results <- class_for_wf %>%
   tune_grid(resamples=class_folds,
             grid=class_tuning_grid,
-            metrics=metric_set(rmse, mae, rsq)) #Or leave metrics NULL
+            metrics=metric_set(roc_auc)) #Or leave metrics NULL
 
 ## find best tuning parameters
 
 bestTune <- CV_results %>%
-  select_best("rmse")
+  select_best("roc_auc")
 
 ## Finalize workflow and prediction 
 
