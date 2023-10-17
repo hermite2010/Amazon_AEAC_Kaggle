@@ -49,6 +49,16 @@ The following object is masked from ‘package:scales’:
 > library(parallel)
 > library(ggmosaic)  # For plotting
 > library(ranger)    # FOR RANDOM/CLASSIFICATION FOREST
+> library(doParallel)
+Loading required package: foreach
+
+Attaching package: ‘foreach’
+
+The following objects are masked from ‘package:purrr’:
+
+    accumulate, when
+
+Loading required package: iterators
 > 
 > # Reading in the Data
 > AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
@@ -99,7 +109,7 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > 
 > ## set up grid of tuning values
 > 
-> class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)))),
+> class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)-1))),
 +                                  min_n(),
 +                                  levels = 10)
 > 
@@ -107,47 +117,42 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > 
 > class_folds <- vfold_cv(AEAC_Train, v = 5, repeats=1)
 > 
+> ## Set up Parallel processing
+> 
+> num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+> if (num_cores > 4)
++   num_cores = 10
+> cl <- makePSOCKcluster(num_cores)
+> registerDoParallel(cl)
+> 
 > ## Run the CV
 > 
 > CV_results <- class_for_wf %>%
 +   tune_grid(resamples=class_folds,
 +             grid=class_tuning_grid,
 +             metrics=metric_set(roc_auc)) #Or leave metrics NULL
-→ A | warning: 10 columns were requested but there were 9 predictors in the data. 9 will be used.
-There were issues with some computations   A: x1
-There were issues with some computations   A: x2
-There were issues with some computations   A: x3
-There were issues with some computations   A: x4
-There were issues with some computations   A: x5
-There were issues with some computations   A: x6
-There were issues with some computations   A: x7
-There were issues with some computations   A: x8
-There were issues with some computations   A: x9
-There were issues with some computations   A: x10
-There were issues with some computations   A: x11
-There were issues with some computations   A: x12
-There were issues with some computations   A: x13
-There were issues with some computations   A: x14
-There were issues with some computations   A: x15
-There were issues with some computations   A: x16
-There were issues with some computations   A: x17
-There were issues with some computations   A: x18
-There were issues with some computations   A: x19
-There were issues with some computations   A: x20
-There were issues with some computations   A: x21
-There were issues with some computations   A: x22
-There were issues with some computations   A: x23
-There were issues with some computations   A: x24
-There were issues with some computations   A: x25
-There were issues with some computations   A: x26
-There were issues with some computations   A: x27
-There were issues with some computations   A: x28
-There were issues with some computations   A: x29
-There were issues with some computations   A: x30
-There were issues with some computations   A: x31
-There were issues with some computations   A: x32
-There were issues with some computations   A: x33
-There were issues with some computations   A: x34
-There were issues with some computations   A: x35
-There were issues with some computations   A: x36
-There were issues with some computations   A: x37
+> 
+> stopCluster(cl)
+> ## find best tuning parameters
+> 
+> bestTune <- CV_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize workflow and prediction 
+> 
+> final_wf <- class_for_wf %>%
++   finalize_workflow(bestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> class_for_preds <- final_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> vroom_write(x=class_for_preds, file="ClassForest.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
+> 
+> 
+> proc.time()
+    user   system  elapsed 
+ 145.315    2.325 2044.871 

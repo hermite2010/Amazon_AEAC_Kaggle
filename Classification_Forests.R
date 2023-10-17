@@ -82,5 +82,5 @@ class_for_preds <- final_wf %>%
   rename(Action = .pred_1) %>% 
   select(3,2)
 
-vroom_write(x=pen_log_preds, file="ClassForest.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
+vroom_write(x=class_for_preds, file="ClassForest.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
 
