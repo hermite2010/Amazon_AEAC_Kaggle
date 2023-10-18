@@ -70,7 +70,7 @@ bestTune <- CV_results %>%
 
 ## Finalize workflow and prediction 
 
-final_wf <- nb_for_wf %>%
+final_wf <- nb_wf %>%
   finalize_workflow(bestTune) %>%
   fit(data=AEAC_Train)
 
