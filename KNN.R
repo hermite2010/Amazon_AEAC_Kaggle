@@ -6,6 +6,7 @@ library(parallel)
 #library(ranger)    # FOR RANDOM/CLASSIFICATION FOREST
 library(doParallel)
 library(discrim) # FOR NAIVE BAYES
+library(kknn)
 
 # Reading in the Data
 AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
@@ -16,8 +17,8 @@ AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
 AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
   step_other(all_nominal_predictors(), threshold = .001) %>% 
-  #step_dummy(all_nominal_predictors()) %>% 
-  step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
+  step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
+  step_normalize(all_numeric_predictors())
 # Try step_lencode_bayes() in the future
 
 prep <- prep(AEAC_recipe)
