@@ -32,7 +32,7 @@ Type 'q()' to quit R.
 ✖ dplyr::filter()  masks stats::filter()
 ✖ dplyr::lag()     masks stats::lag()
 ✖ recipes::step()  masks stats::step()
-• Dig deeper into tidy modeling with R at https://www.tmwr.org
+• Use tidymodels_prefer() to resolve common conflicts.
 > library(embed)     # For target encoding
 > library(vroom) 
 
@@ -94,7 +94,7 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 +   step_other(all_nominal_predictors(), threshold = .001) %>% 
 +   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
 +   step_normalize(all_predictors()) %>% 
-+   step_pca(all_predictors(), threshold = 0.8873)
++   step_pca(all_predictors(), threshold = 0.95)
 > # Try step_lencode_bayes() in the future
 > 
 > prep <- prep(AEAC_recipe)
@@ -216,4 +216,4 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > 
 > proc.time()
    user  system elapsed 
-182.289   1.936 255.524 
+186.888   2.461 264.771 
