@@ -19,7 +19,7 @@ AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>%
   step_other(all_nominal_predictors(), threshold = .001) %>% 
   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
   step_normalize(all_predictors()) %>% 
-  step_pca(all_predictors(), threshold = 0.8873)
+  step_pca(all_predictors(), threshold = 0.95)
 # Try step_lencode_bayes() in the future
 
 prep <- prep(AEAC_recipe)
