@@ -85,12 +85,12 @@ svmPoly_results <- svmPoly_wf %>%
 svmRadial_results <- svmRadial_wf %>%
   tune_grid(resamples=svm_folds,
             grid=svmRadial_grid,
-            metrics=metric_set(roc_auc)
+            metrics=metric_set(roc_auc))
             
 svmLinear_results <- svmLinear_wf %>%
   tune_grid(resamples=svm_folds,
             grid=svmLinear_grid,
-            metrics=metric_set(roc_auc)
+            metrics=metric_set(roc_auc))
             
 stopCluster(cl)
 ## find best tuning parameters
