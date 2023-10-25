@@ -29,7 +29,7 @@ baked_data <- bake(prep, new_data=AEAC_Train)
 
 class_for_mod <- rand_forest(mtry = tune(),
                             min_n=tune(),
-                            trees=100000) %>% #Type of model
+                            trees=500) %>% #Type of model
   set_engine("ranger") %>% # What R function to use
   set_mode("classification")
 
@@ -43,11 +43,11 @@ class_for_wf <- workflow() %>%
 
 class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)-1))),
                                  min_n(),
-                                 levels = 100)
+                                 levels = 10)
 
 ## set up k-fold CV
 
-class_folds <- vfold_cv(AEAC_Train, v = 15, repeats=1)
+class_folds <- vfold_cv(AEAC_Train, v = 5, repeats=1)
 
 ## Set up Parallel processing
 
