@@ -1,0 +1,168 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(tidymodels)
+── Attaching packages ────────────────────────────────────── tidymodels 1.1.1 ──
+✔ broom        1.0.5     ✔ recipes      1.0.8
+✔ dials        1.2.0     ✔ rsample      1.2.0
+✔ dplyr        1.1.3     ✔ tibble       3.2.1
+✔ ggplot2      3.4.3     ✔ tidyr        1.3.0
+✔ infer        1.0.5     ✔ tune         1.1.2
+✔ modeldata    1.2.0     ✔ workflows    1.1.3
+✔ parsnip      1.1.1     ✔ workflowsets 1.0.1
+✔ purrr        1.0.2     ✔ yardstick    1.2.0
+── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
+✖ purrr::discard() masks scales::discard()
+✖ dplyr::filter()  masks stats::filter()
+✖ dplyr::lag()     masks stats::lag()
+✖ recipes::step()  masks stats::step()
+• Use tidymodels_prefer() to resolve common conflicts.
+> library(embed)     # For target encoding
+> library(vroom) 
+
+Attaching package: ‘vroom’
+
+The following object is masked from ‘package:yardstick’:
+
+    spec
+
+The following object is masked from ‘package:scales’:
+
+    col_factor
+
+> library(parallel)
+> #library(ggmosaic)  # For plotting
+> #library(ranger)    # FOR RANDOM/CLASSIFICATION FOREST
+> library(doParallel)
+Loading required package: foreach
+
+Attaching package: ‘foreach’
+
+The following objects are masked from ‘package:purrr’:
+
+    accumulate, when
+
+Loading required package: iterators
+> library(discrim) # FOR NAIVE BAYES
+
+Attaching package: ‘discrim’
+
+The following object is masked from ‘package:dials’:
+
+    smoothness
+
+> library(kknn)
+> 
+> # Reading in the Data
+> AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
+Rows: 32769 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): ACTION, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTN...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> AEAC_Test <- vroom("test.csv") #"Amazon_AEAC_Kaggle/test.csv" for local
+Rows: 58921 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> 
+> AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
+> 
+> AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
++   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
++   step_other(all_nominal_predictors(), threshold = .001) %>% 
++   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
++   step_normalize(all_numeric_predictors())
+> # Try step_lencode_bayes() in the future
+> 
+> prep <- prep(AEAC_recipe)
+> baked_data <- bake(prep, new_data=AEAC_Train)
+> 
+> 
+> # SVM ---------------------------------------------------
+> 
+> ## SVM models
+> #svmPoly <- svm_poly(degree=tune(), cost=tune()) %>% # set or tune
+> #  set_mode("classification") %>%
+> #  set_engine("kernlab")
+> 
+> #svmPoly_wf <- workflow() %>%
+> #  add_recipe(AEAC_recipe) %>%
+> #  add_model(svmPoly)
+> 
+> #svmRadial <- svm_rbf(rbf_sigma=tune(), cost=tune()) %>% # set or tune
+> #  set_mode("classification") %>%
+> #  set_engine("kernlab")
+> 
+> #svmRadial_wf <- workflow() %>%
+> #  add_recipe(AEAC_recipe) %>%
+> #  add_model(svmRadial)
+> 
+> svmLinear <- svm_linear(cost=tune()) %>% # set or tune
++   set_mode("classification") %>%
++   set_engine("kernlab")
+> 
+> svmLinear_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(svmLinear)
+> 
+> ## set up grid of tuning values
+> 
+> #svmPoly_grid <- grid_regular(degree(),
+> #                             cost(),
+> #                             levels = 10)
+> #svmRadial_grid <- grid_regular(rbf_sigma(),
+> #                               cost(),
+> #                               levels = 10)
+> svmLinear_grid <- grid_regular(cost(),
++                                levels = 10)
+> 
+> ## set up k-fold CV
+> 
+> svm_folds <- vfold_cv(AEAC_Train, v = 10, repeats=1)
+> 
+> ## Set up Parallel processing
+> 
+> num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+> if (num_cores > 4)
++   num_cores = 10
+> cl <- makePSOCKcluster(num_cores)
+> registerDoParallel(cl)
+> 
+> ## Run the CV
+> 
+> #svmPoly_results <- svmPoly_wf %>%
+> #  tune_grid(resamples=svm_folds,
+> #            grid=svmPoly_grid,
+> #            metrics=metric_set(roc_auc)) #Or leave metrics NULL
+> 
+> #svmRadial_results <- svmRadial_wf %>%
+> #  tune_grid(resamples=svm_folds,
+> #            grid=svmRadial_grid,
+> #            metrics=metric_set(roc_auc))
+>             
+> svmLinear_results <- svmLinear_wf %>%
++   tune_grid(resamples=svm_folds,
++             grid=svmLinear_grid,
++             metrics=metric_set(roc_auc))
