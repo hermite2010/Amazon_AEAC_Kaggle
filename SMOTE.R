@@ -17,9 +17,10 @@ AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
 
 AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
   step_mutate_at(all_numeric_predictors(), fn = factor) %>%
-  #Everything numeric for SMOTE so encode it here
-  step_smote(all_outcomes(), neighbors=K) %>% 
-  step_upsample()
+  step_other(all_nominal_predictors(), threshold = .001) %>%
+  step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
+  step_smote(all_outcomes(), neighbors = 5) #%>% 
+#  step_upsample()
 # OR step_downsample()
 
 # apply the recipe to your data
