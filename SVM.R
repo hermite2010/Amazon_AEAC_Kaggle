@@ -53,7 +53,6 @@ svmLinear_wf <- workflow() %>%
   add_model(svmLinear)
 
 ## set up grid of tuning values
-
 svmPoly_grid <- grid_regular(degree(),
                              cost(),
                              levels = 3)
@@ -64,11 +63,9 @@ svmLinear_grid <- grid_regular(cost(),
                                levels = 3)
 
 ## set up k-fold CV
-
 svm_folds <- vfold_cv(AEAC_Train, v = 5, repeats=1)
 
 ## Set up Parallel processing
-
 num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
 if (num_cores > 4)
   num_cores = 10
@@ -76,7 +73,6 @@ cl <- makePSOCKcluster(num_cores)
 registerDoParallel(cl)
 
 ## Run the CV
-
 svmPoly_results <- svmPoly_wf %>%
   tune_grid(resamples=svm_folds,
             grid=svmPoly_grid,
@@ -93,8 +89,8 @@ svmLinear_results <- svmLinear_wf %>%
             metrics=metric_set(roc_auc))
             
 stopCluster(cl)
-## find best tuning parameters
 
+## find best tuning parameters
 polyBestTune <- svmPoly_results %>%
   select_best("roc_auc")
 
@@ -105,7 +101,6 @@ linearBestTune <- svmLinear_results %>%
   select_best("roc_auc")
 
 ## Finalize workflow and prediction 
-
 polyFinal_wf <- svmPoly_wf %>%
   finalize_workflow(polyBestTune) %>%
   fit(data=AEAC_Train)
