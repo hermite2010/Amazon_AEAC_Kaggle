@@ -1,0 +1,517 @@
+
+R version 4.3.1 (2023-06-16) -- "Beagle Scouts"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(tidymodels)
+── Attaching packages ────────────────────────────────────── tidymodels 1.1.1 ──
+✔ broom        1.0.5     ✔ recipes      1.0.8
+✔ dials        1.2.0     ✔ rsample      1.2.0
+✔ dplyr        1.1.3     ✔ tibble       3.2.1
+✔ ggplot2      3.4.3     ✔ tidyr        1.3.0
+✔ infer        1.0.5     ✔ tune         1.1.2
+✔ modeldata    1.2.0     ✔ workflows    1.1.3
+✔ parsnip      1.1.1     ✔ workflowsets 1.0.1
+✔ purrr        1.0.2     ✔ yardstick    1.2.0
+── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
+✖ purrr::discard() masks scales::discard()
+✖ dplyr::filter()  masks stats::filter()
+✖ dplyr::lag()     masks stats::lag()
+✖ recipes::step()  masks stats::step()
+• Use suppressPackageStartupMessages() to eliminate package startup messages
+> library(embed)     # For target encoding
+> library(vroom) 
+
+Attaching package: ‘vroom’
+
+The following object is masked from ‘package:yardstick’:
+
+    spec
+
+The following object is masked from ‘package:scales’:
+
+    col_factor
+
+> library(parallel)
+> library(ggmosaic)  # For plotting
+> library(ranger)    # FOR RANDOM/CLASSIFICATION FOREST
+> library(doParallel)
+Loading required package: foreach
+
+Attaching package: ‘foreach’
+
+The following objects are masked from ‘package:purrr’:
+
+    accumulate, when
+
+Loading required package: iterators
+> library(discrim) # FOR NAIVE BAYES
+
+Attaching package: ‘discrim’
+
+The following object is masked from ‘package:dials’:
+
+    smoothness
+
+> library(kknn)
+> library(themis) # for smote
+> 
+> # Reading in the Data
+> AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
+Rows: 32769 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): ACTION, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTN...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> AEAC_Test <- vroom("test.csv") #"Amazon_AEAC_Kaggle/test.csv" for local
+Rows: 58921 Columns: 10
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+> 
+> AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
+> 
+> AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
++   step_mutate_at(all_numeric_predictors(), fn = factor) %>%
++   step_other(all_nominal_predictors(), threshold = .001) %>%
++   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
++   step_smote(all_outcomes(), neighbors = 5) #%>% 
+> #  step_upsample()
+> # OR step_downsample()
+> 
+> # apply the recipe to your data
+> prepped_recipe <- prep(AEAC_recipe)
+> baked_data <- bake(prepped_recipe, new_data=AEAC_Train)
+> 
+> 
+> # Classification Forest ---------------------------------------------------
+> # Set Up the Engine
+> class_for_mod <- rand_forest(mtry = tune(),
++                              min_n=tune(),
++                              trees=500) %>% #Type of model
++   set_engine("ranger") %>% # What R function to use
++   set_mode("classification")
+> 
+> ## Workflow and model and recipe
+> class_for_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(class_for_mod)
+> 
+> ## set up grid of tuning values
+> class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)-1))),
++                                   min_n(),
++                                   levels = 6)
+> 
+> ## set up k-fold CV
+> class_folds <- vfold_cv(AEAC_Train, v = 4, repeats=1)
+> 
+> # ## Set up Parallel processing
+> # num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+> # if (num_cores > 4)
+> #   num_cores = 10
+> # cl <- makePSOCKcluster(num_cores)
+> # registerDoParallel(cl)
+> 
+> ## Run the CV
+> CV_results <- class_for_wf %>%
++   tune_grid(resamples=class_folds,
++             grid=class_tuning_grid,
++             metrics=metric_set(roc_auc)) #Or leave metrics NULL
+> 
+> #stopCluster(cl)
+> ## find best tuning parameters
+> bestTune <- CV_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize workflow and prediction 
+> final_wf <- class_for_wf %>%
++   finalize_workflow(bestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> class_for_preds <- final_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> ## Write it out
+> vroom_write(x=class_for_preds, file="ClassForest_SMOTE.csv", delim=",")
+> 
+> # Logistic Regression -----------------------------------------------------
+> #Type of model
+> log_reg_mod <- logistic_reg() %>% 
++   set_engine("glm")
+> 
+> # Set Up Workflow
+> amazon_log_workflow <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(log_reg_mod) %>%
++   fit(data = AEAC_Train) # Fit the workflow
+> 
+> amazon_log_predictions <- predict(amazon_log_workflow,
++                                   new_data=AEAC_Test,
++                                   type= "prob") #%>% # "class" which uses cutoff as .5 or "prob" (see doc)
+> #mutate(ACTION = ifelse(.pred_1> C,1,0)) #REPLACE C WITH WHATEVER CUTOFF I WANT
+> 
+> ### FOR TYPE CLASS
+> # log_submission <- amazon_log_predictions %>% 
+> #   mutate(id = row_number()) %>% 
+> #   rename(Action = .pred_class)
+> 
+> ### FOR TYPE PROB
+> log_submission <- amazon_log_predictions %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> ## Write it out
+> vroom_write(x=log_submission, file="LogRegression_SMOTE.csv", delim=",")
+> 
+> # Penalized Logistic Regression -------------------------------------------
+> #Type of model
+> pen_log_model <- logistic_reg(mixture=tune(),
++                               penalty=tune()) %>% 
++   set_engine("glmnet")
+> # Set the Workflow
+> pen_log_workflow <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(pen_log_model)
+> 
+> ## Grid of values to tune over
+> pen_log_tuning_grid <- grid_regular(penalty(),
++                                     mixture(), # Always bewteen 0 and 1
++                                     levels = 3) ## L^2 total tuning possibilities
+> 
+> ## Split data for CV
+> folds <- vfold_cv(AEAC_Train, v = 3, repeats=1)
+> 
+> ## Run the CV
+> CV_results <- pen_log_workflow %>%
++   tune_grid(resamples=folds,
++             grid=pen_log_tuning_grid,
++             metrics=metric_set(roc_auc)) 
+→ A | warning: Model failed to converge with max|grad| = 0.172806 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?
+There were issues with some computations   A: x1
+There were issues with some computations   A: x1
+
+> 
+> ## Find Best Tuning Parameters
+> pen_log_bestTune <- CV_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize the Workflow & fit it
+> final_wf <- pen_log_workflow %>%
++   finalize_workflow(pen_log_bestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> ## Predict
+> pen_log_preds <- final_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> ## Write it out
+> vroom_write(x=pen_log_preds, file="PenLogRegression_SMOTE.csv", delim=",")
+> 
+> # Naive Bayes -------------------------------------------------------------
+> ## Set Up Model
+> nb_model <- naive_Bayes(Laplace=tune(), 
++                         smoothness=tune()) %>%
++   set_mode("classification") %>%
++   set_engine("naivebayes")
+> 
+> ## Workflow and model and recipe
+> nb_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(nb_model)
+> 
+> ## set up grid of tuning values
+> nb_tuning_grid <- grid_regular(Laplace(),
++                                smoothness(),
++                                levels = 10)
+> 
+> ## set up k-fold CV
+> nb_folds <- vfold_cv(AEAC_Train, v = 5, repeats=1)
+> 
+> # ## Set up Parallel processing
+> # num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+> # if (num_cores > 4)
+> #   num_cores = 10
+> # cl <- makePSOCKcluster(num_cores)
+> # registerDoParallel(cl)
+> 
+> ## Run the CV
+> CV_results <- nb_wf %>%
++   tune_grid(resamples=nb_folds,
++             grid=nb_tuning_grid,
++             metrics=metric_set(roc_auc)) #Or leave metrics NULL
+> #stopCluster(cl)
+> 
+> ## find best tuning parameters
+> bestTune <- CV_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize workflow and prediction 
+> final_wf <- nb_wf %>%
++   finalize_workflow(bestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> nb_preds <- final_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> ## Write it out
+> vroom_write(x=nb_preds, file="NaiveBayes_SMOTE.csv", delim=",")
+> 
+> # K Nearest Neighbor ------------------------------------------------------
+> ## Set up model
+> knn_model <- nearest_neighbor(neighbors=tune()) %>% # set or tune
++   set_mode("classification") %>%
++   set_engine("kknn")
+> 
+> ## Set the Workflow
+> knn_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(knn_model)
+> 
+> ## set up grid of tuning values
+> knn_tuning_grid <- grid_regular(neighbors(),
++                                 levels = 10)
+> 
+> ## set up k-fold CV
+> knn_folds <- vfold_cv(AEAC_Train, v = 10, repeats=1)
+> 
+> ## Set up Parallel processing
+> # num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+> # if (num_cores > 4)
+> #   num_cores = 10
+> # cl <- makePSOCKcluster(num_cores)
+> # registerDoParallel(cl)
+> 
+> ## Run the CV
+> CV_results <- knn_wf %>%
++   tune_grid(resamples=knn_folds,
++             grid=knn_tuning_grid,
++             metrics=metric_set(roc_auc)) #Or leave metrics NULL
+> 
+> #stopCluster(cl)
+> ## find best tuning parameters
+> bestTune <- CV_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize workflow and prediction 
+> final_wf <- knn_wf %>%
++   finalize_workflow(bestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> knn_preds <- final_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> ## Write it out
+> vroom_write(x=knn_preds, file="KNN_SMOTE.csv", delim=",") #"Amazon_AEAC_Kaggle/KNN.csv"
+> 
+> 
+> # SVM Models ---------------------------------------------------------------------
+> ## SVM Engines & Workflows
+> svmPoly <- svm_poly(degree=tune(), cost=tune()) %>% # set or tune
++   set_mode("classification") %>%
++   set_engine("kernlab")
+> 
+> svmPoly_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(svmPoly)
+> 
+> svmRadial <- svm_rbf(rbf_sigma=tune(), cost=tune()) %>% # set or tune
++   set_mode("classification") %>%
++   set_engine("kernlab")
+> 
+> svmRadial_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(svmRadial)
+> 
+> svmLinear <- svm_linear(cost=tune()) %>% # set or tune
++   set_mode("classification") %>%
++   set_engine("kernlab")
+> 
+> svmLinear_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(svmLinear)
+> 
+> ## set up grid of tuning values
+> svmPoly_grid <- grid_regular(degree(),
++                              cost(),
++                              levels = 5)
+> svmRadial_grid <- grid_regular(rbf_sigma(),
++                                cost(),
++                                levels = 5)
+> svmLinear_grid <- grid_regular(cost(),
++                                levels = 5)
+> 
+> ## set up k-fold CV
+> svm_folds <- vfold_cv(AEAC_Train, v = 3, repeats=1)
+> 
+> ## Set up Parallel processing
+> # num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+> # if (num_cores > 4)
+> #   num_cores = 10
+> # cl <- makePSOCKcluster(num_cores)
+> # registerDoParallel(cl)
+> 
+> ## Run the CV
+> svmPoly_results <- svmPoly_wf %>%
++   tune_grid(resamples=svm_folds,
++             grid=svmPoly_grid,
++             metrics=metric_set(roc_auc)) #Or leave metrics NULL
+→ A | warning: Model failed to converge with max|grad| = 0.174961 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?
+There were issues with some computations   A: x1
+→ B | error:   $ operator is invalid for atomic vectors
+There were issues with some computations   A: x1There were issues with some computations   A: x1   B: x1
+→ C | error:   NAs are not allowed in subscripted assignments
+There were issues with some computations   A: x1   B: x1There were issues with some computations   A: x1   B: x1   C: x1
+There were issues with some computations   A: x1   B: x1   C: x2
+There were issues with some computations   A: x1   B: x1   C: x3
+There were issues with some computations   A: x1   B: x1   C: x4
+There were issues with some computations   A: x1   B: x2   C: x4
+There were issues with some computations   A: x1   B: x2   C: x5
+There were issues with some computations   A: x1   B: x2   C: x6
+There were issues with some computations   A: x1   B: x2   C: x7
+There were issues with some computations   A: x1   B: x2   C: x8
+There were issues with some computations   A: x1   B: x3   C: x8
+There were issues with some computations   A: x1   B: x4   C: x8
+There were issues with some computations   A: x1   B: x4   C: x9
+There were issues with some computations   A: x1   B: x4   C: x10
+There were issues with some computations   A: x1   B: x4   C: x11
+There were issues with some computations   A: x1   B: x4   C: x12
+There were issues with some computations   A: x1   B: x4   C: x13
+There were issues with some computations   A: x1   B: x4   C: x14
+There were issues with some computations   A: x1   B: x4   C: x15
+There were issues with some computations   A: x1   B: x4   C: x16
+There were issues with some computations   A: x1   B: x5   C: x16
+There were issues with some computations   A: x1   B: x5   C: x17
+There were issues with some computations   A: x1   B: x5   C: x18
+There were issues with some computations   A: x1   B: x5   C: x19
+There were issues with some computations   A: x1   B: x5   C: x20
+There were issues with some computations   A: x1   B: x5   C: x21
+There were issues with some computations   A: x1   B: x5   C: x22
+There were issues with some computations   A: x1   B: x6   C: x22
+There were issues with some computations   A: x1   B: x6   C: x23
+There were issues with some computations   A: x1   B: x6   C: x24
+There were issues with some computations   A: x1   B: x7   C: x24
+There were issues with some computations   A: x1   B: x7   C: x25
+There were issues with some computations   A: x1   B: x7   C: x26
+There were issues with some computations   A: x1   B: x8   C: x26
+There were issues with some computations   A: x1   B: x9   C: x26
+There were issues with some computations   A: x1   B: x9   C: x27
+There were issues with some computations   A: x1   B: x9   C: x28
+There were issues with some computations   A: x1   B: x10   C: x28
+There were issues with some computations   A: x1   B: x10   C: x29
+There were issues with some computations   A: x1   B: x10   C: x30
+There were issues with some computations   A: x1   B: x11   C: x30
+There were issues with some computations   A: x1   B: x11   C: x30
+
+> 
+> svmRadial_results <- svmRadial_wf %>%
++   tune_grid(resamples=svm_folds,
++             grid=svmRadial_grid,
++             metrics=metric_set(roc_auc))
+→ A | warning: Model failed to converge with max|grad| = 0.174961 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?
+There were issues with some computations   A: x1
+→ B | error:   $ operator is invalid for atomic vectors
+There were issues with some computations   A: x1There were issues with some computations   A: x1   B: x1
+There were issues with some computations   A: x1   B: x2
+There were issues with some computations   A: x1   B: x3
+There were issues with some computations   A: x1   B: x4
+There were issues with some computations   A: x1   B: x5
+There were issues with some computations   A: x1   B: x6
+There were issues with some computations   A: x1   B: x6
+
+> 
+> svmLinear_results <- svmLinear_wf %>%
++   tune_grid(resamples=svm_folds,
++             grid=svmLinear_grid,
++             metrics=metric_set(roc_auc))
+→ A | warning: Model failed to converge with max|grad| = 0.174961 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?
+There were issues with some computations   A: x1
+→ B | error:   $ operator is invalid for atomic vectors
+There were issues with some computations   A: x1There were issues with some computations   A: x1   B: x1
+There were issues with some computations   A: x1   B: x2
+There were issues with some computations   A: x1   B: x3
+There were issues with some computations   A: x1   B: x4
+There were issues with some computations   A: x1   B: x5
+There were issues with some computations   A: x1   B: x6
+There were issues with some computations   A: x1   B: x7
+There were issues with some computations   A: x1   B: x7
+
+> 
+> #stopCluster(cl)
+> 
+> ## find best tuning parameters
+> polyBestTune <- svmPoly_results %>%
++   select_best("roc_auc")
+> 
+> radialBestTune <- svmRadial_results %>%
++   select_best("roc_auc")
+> 
+> linearBestTune <- svmLinear_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize workflow and prediction 
+> polyFinal_wf <- svmPoly_wf %>%
++   finalize_workflow(polyBestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> radialFinal_wf <- svmRadial_wf %>%
++   finalize_workflow(radialBestTune) %>%
++   fit(data=AEAC_Train)
+line search fails -1.230475 -0.03941855 3.029571e-05 8.576297e-06 -3.530355e-09 -1.44555e-09 -1.193521e-13> 
+> linearFinal_wf <- svmLinear_wf %>%
++   finalize_workflow(linearBestTune) %>%
++   fit(data=AEAC_Train)
+ Setting default kernel parameters  
+> 
+> svmPoly_preds <- polyFinal_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> vroom_write(x=svmPoly_preds, file="SVM_Poly_SMOTE.csv", delim=",") #"Amazon_AEAC_Kaggle/SVM_Poly.csv"
+> 
+> svmRadial_preds <- radialFinal_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+Error in prob.model(object)[[p]]$A : 
+  $ operator is invalid for atomic vectors
+Calls: %>% ... <Anonymous> -> <Anonymous> -> .local -> .SigmoidPredict
+Execution halted

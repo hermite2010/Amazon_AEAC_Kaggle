@@ -25,7 +25,7 @@ AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>%
 
 # apply the recipe to your data
 prepped_recipe <- prep(AEAC_recipe)
-baked_data <- bake(prep, new_data=AEAC_Train)
+baked_data <- bake(prepped_recipe, new_data=AEAC_Train)
 
 
 # Classification Forest ---------------------------------------------------
