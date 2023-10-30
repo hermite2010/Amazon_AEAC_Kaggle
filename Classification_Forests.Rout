@@ -32,7 +32,7 @@ Type 'q()' to quit R.
 ✖ dplyr::filter()  masks stats::filter()
 ✖ dplyr::lag()     masks stats::lag()
 ✖ recipes::step()  masks stats::step()
-• Learn how to get started at https://www.tidymodels.org/start/
+• Use suppressPackageStartupMessages() to eliminate package startup messages
 > library(embed)     # For target encoding
 > library(vroom) 
 
@@ -59,6 +59,7 @@ The following objects are masked from ‘package:purrr’:
     accumulate, when
 
 Loading required package: iterators
+> library(themis)
 > 
 > # Reading in the Data
 > AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
@@ -82,10 +83,11 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > 
 > AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
 +   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
-+   step_other(all_nominal_predictors(), threshold = .001) %>% 
-+   #step_dummy(all_nominal_predictors()) %>% 
-+   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
-> # Try step_lencode_bayes() in the future
++   step_other(all_nominal_predictors(), threshold = .001) %>%  
++   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>%
++   step_smote(all_outcomes(), neighbors = 5) %>%
++   step_normalize(all_predictors()) %>%
++   step_pca(all_predictors(), threshold = 0.95)
 > 
 > prep <- prep(AEAC_recipe)
 > baked_data <- bake(prep, new_data=AEAC_Train)
@@ -97,7 +99,7 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > 
 > class_for_mod <- rand_forest(mtry = tune(),
 +                             min_n=tune(),
-+                             trees=100000) %>% #Type of model
++                             trees=750) %>% #Type of model
 +   set_engine("ranger") %>% # What R function to use
 +   set_mode("classification")
 > 
@@ -111,11 +113,11 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > 
 > class_tuning_grid <- grid_regular(mtry(range = c(1,(ncol(AEAC_Train)-1))),
 +                                  min_n(),
-+                                  levels = 100)
++                                  levels = 10)
 > 
 > ## set up k-fold CV
 > 
-> class_folds <- vfold_cv(AEAC_Train, v = 15, repeats=1)
+> class_folds <- vfold_cv(AEAC_Train, v = 5, repeats=1)
 > 
 > ## Set up Parallel processing
 > 

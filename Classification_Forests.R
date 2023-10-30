@@ -5,6 +5,7 @@ library(parallel)
 library(ggmosaic)  # For plotting
 library(ranger)    # FOR RANDOM/CLASSIFICATION FOREST
 library(doParallel)
+library(themis)
 
 # Reading in the Data
 AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
@@ -14,10 +15,11 @@ AEAC_Train$ACTION = as.factor(AEAC_Train$ACTION)
 
 AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
-  step_other(all_nominal_predictors(), threshold = .001) %>% 
-  #step_dummy(all_nominal_predictors()) %>% 
-  step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
-# Try step_lencode_bayes() in the future
+  step_other(all_nominal_predictors(), threshold = .001) %>%  
+  step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>%
+  step_smote(all_outcomes(), neighbors = 5) %>%
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), threshold = 0.95)
 
 prep <- prep(AEAC_recipe)
 baked_data <- bake(prep, new_data=AEAC_Train)
@@ -29,7 +31,7 @@ baked_data <- bake(prep, new_data=AEAC_Train)
 
 class_for_mod <- rand_forest(mtry = tune(),
                             min_n=tune(),
-                            trees=500) %>% #Type of model
+                            trees=750) %>% #Type of model
   set_engine("ranger") %>% # What R function to use
   set_mode("classification")
 
@@ -82,5 +84,5 @@ class_for_preds <- final_wf %>%
   rename(Action = .pred_1) %>% 
   select(3,2)
 
-vroom_write(x=class_for_preds, file="ClassForest.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
+vroom_write(x=class_for_preds, file="ClassForest_smote+pca.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
 

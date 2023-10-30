@@ -81,6 +81,7 @@ The following object is masked from ‘package:parsnip’:
 
     bart
 
+> library(themis)
 > 
 > # Reading in the Data
 > AEAC_Train <- vroom("train.csv") #"Amazon_AEAC_Kaggle/train.csv" for local
@@ -105,36 +106,46 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
 +   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
 +   step_other(all_nominal_predictors(), threshold = .001) %>% 
-+   step_lencode_bayes(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
++   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>% 
++   step_smote(all_outcomes(), neighbors = 5) %>% 
 +   step_normalize(all_predictors()) %>% 
 +   step_pca(all_predictors(), threshold = 0.95)
 > # Try step_lencode_bayes() in the future
 > 
-> prep <- prep(AEAC_recipe)
-Error in `step_lencode_bayes()`:
-Caused by error in `purrr::map()`:
-ℹ In index: 1.
-ℹ With name: RESOURCE.
-Caused by error in `.f()`:
-! The package "rstanarm" is required.
-Backtrace:
-     ▆
-  1. ├─recipes::prep(AEAC_recipe)
-  2. ├─recipes:::prep.recipe(AEAC_recipe)
-  3. │ ├─recipes:::recipes_error_context(...)
-  4. │ │ ├─base::withCallingHandlers(...)
-  5. │ │ └─base::force(expr)
-  6. │ ├─recipes::prep(x$steps[[i]], training = training, info = x$term_info)
-  7. │ └─embed:::prep.step_lencode_bayes(...)
-  8. │   └─purrr::map(...)
-  9. │     └─purrr:::map_("list", .x, .f, ..., .progress = .progress)
- 10. │       ├─purrr:::with_indexed_errors(...)
- 11. │       │ └─base::withCallingHandlers(...)
- 12. │       ├─purrr:::call_with_cleanup(...)
- 13. │       └─embed (local) .f(.x[[i]], ...)
- 14. │         └─rlang::check_installed("rstanarm")
- 15. │           └─base::stop(cnd)
- 16. └─purrr (local) `<fn>`(`<rlb_r___>`)
- 17.   └─cli::cli_abort(...)
- 18.     └─rlang::abort(...)
-Execution halted
+> ## Set up Parallel processing
+> num_cores <- as.numeric(parallel::detectCores())#How many cores do I have?
+> if (num_cores > 4)
++   num_cores = 10
+> cl <- makePSOCKcluster(num_cores)
+> registerDoParallel(cl)
+> 
+> prepped_recipe <- prep(AEAC_recipe)
+> baked_data <- bake(prepped_recipe, new_data=AEAC_Train)
+> 
+> # Set the model
+> bart_mod <- parsnip::bart(mode = "classification",
++                           engine = "dbarts",
++                           trees = 25)
+> 
+> # Set workflow
+> bart_wf <- workflow() %>%
++   add_recipe(AEAC_recipe) %>%
++   add_model(bart_mod) %>% 
++   fit(data = AEAC_Train)
+> 
+> stopCluster(cl)
+> 
+> # Finalize and Predict 
+> bart_preds <- bart_wf %>%
++   fit(data = AEAC_Train) %>% 
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> 
+> vroom_write(x=bart_preds, file="Bart_pca+smote.csv", delim=",") #"Amazon_AEAC_Kaggle/NaiveBayes.csv"
+> 
+> proc.time()
+    user   system  elapsed 
+ 576.564   21.027 1413.064 
