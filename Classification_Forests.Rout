@@ -32,7 +32,7 @@ Type 'q()' to quit R.
 ✖ dplyr::filter()  masks stats::filter()
 ✖ dplyr::lag()     masks stats::lag()
 ✖ recipes::step()  masks stats::step()
-• Dig deeper into tidy modeling with R at https://www.tmwr.org
+• Learn how to get started at https://www.tidymodels.org/start/
 > library(embed)     # For target encoding
 > library(vroom) 
 
@@ -83,11 +83,11 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 > 
 > AEAC_recipe <- recipe(ACTION ~., data=AEAC_Train) %>% 
 +   step_mutate_at(all_numeric_predictors(), fn= factor) %>% 
-+   step_other(all_nominal_predictors(), threshold = .001) %>%  
-+   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION)) %>%
-+   step_smote(all_outcomes(), neighbors = 5) %>%
-+   step_normalize(all_predictors()) %>%
-+   step_pca(all_predictors(), threshold = 0.95)
++ #  step_other(all_nominal_predictors(), threshold = .001) %>%  
++   step_lencode_mixed(all_nominal_predictors(), outcome= vars(ACTION))
+> #  step_smote(all_outcomes(), neighbors = 5) %>%
+> #  step_normalize(all_predictors()) %>%
+> #  step_pca(all_predictors(), threshold = 0.95)
 > 
 > prep <- prep(AEAC_recipe)
 > baked_data <- bake(prep, new_data=AEAC_Train)
@@ -133,5 +133,12 @@ dbl (10): id, RESOURCE, MGR_ID, ROLE_ROLLUP_1, ROLE_ROLLUP_2, ROLE_DEPTNAME,...
 +   tune_grid(resamples=class_folds,
 +             grid=class_tuning_grid,
 +             metrics=metric_set(roc_auc)) #Or leave metrics NULL
-→ A | warning: 8 columns were requested but there were 7 predictors in the data. 7 will be used.
+→ A | warning: Model failed to converge with max|grad| = 0.320906 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?
 There were issues with some computations   A: x1
+→ B | warning: Model failed to converge with max|grad| = 0.401765 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?
+There were issues with some computations   A: x1There were issues with some computations   A: x1   B: x1
+→ C | warning: Model failed to converge with max|grad| = 0.392718 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
+                - Rescale variables?, Model failed to converge with max|grad| = 0.317737 (tol = 0.002, component 1)
+There were issues with some computations   A: x1   B: x1There were issues with some computations   A: x1   B: x1   C: x1
