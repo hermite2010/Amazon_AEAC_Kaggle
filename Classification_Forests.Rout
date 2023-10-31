@@ -142,3 +142,30 @@ There were issues with some computations   A: x1There were issues with some com
 → C | warning: Model failed to converge with max|grad| = 0.392718 (tol = 0.002, component 1), Model is nearly unidentifiable: very large eigenvalue
                 - Rescale variables?, Model failed to converge with max|grad| = 0.317737 (tol = 0.002, component 1)
 There were issues with some computations   A: x1   B: x1There were issues with some computations   A: x1   B: x1   C: x1
+There were issues with some computations   A: x1   B: x1   C: x1
+
+> 
+> #stopCluster(cl)
+> ## find best tuning parameters
+> 
+> bestTune <- CV_results %>%
++   select_best("roc_auc")
+> 
+> ## Finalize workflow and prediction 
+> 
+> final_wf <- class_for_wf %>%
++   finalize_workflow(bestTune) %>%
++   fit(data=AEAC_Train)
+> 
+> class_for_preds <- final_wf %>%
++   predict(new_data = AEAC_Test, type="prob") %>% 
++   mutate(id = row_number()) %>% 
++   rename(Action = .pred_1) %>% 
++   select(3,2)
+> 
+> vroom_write(x=class_for_preds, file="ClassForest_simple.csv", delim=",") #"Amazon_AEAC_Kaggle/PenLogRegression.csv"
+> 
+> 
+> proc.time()
+    user   system  elapsed 
+6484.950  136.007 5320.278 
